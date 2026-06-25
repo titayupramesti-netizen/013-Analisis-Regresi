@@ -1,0 +1,244 @@
+---
+title: "Pertemuan 8"
+author: "Tita Ayu Pramesti"
+date: "2026-06-25"
+output: html_document
+---
+
+# Package
+
+```{r}
+library(readxl)
+library(car) # untuk multikolinearitas
+library(olsrr) # untuk best subset
+library(MASS) # untuk forward, backward, dan stepwise
+library(glmnet) # untuk ridge dan lasso
+library(dplyr)
+```
+
+# Uji F Parsial dan Sekuensial
+
+```{r}
+data(mtcars)
+head(mtcars)
+```
+Kita Pakai : Y = mpg, X1 = wt, X2 = hp, X3 = disp
+
+## F Sekuensial
+
+```{r}
+# Model 1: tanpa prediktor
+m1 <- lm(mpg ~ 1, data = mtcars)
+
+# Model 2: tambah wt
+m2 <- lm(mpg ~ wt, data = mtcars)
+
+# Model 3: tambah hp
+m3 <- lm(mpg ~ wt + hp, data = mtcars)
+
+# Model 4 : tambah disp
+m4 <- lm(mpg ~ wt + hp + disp, data = mtcars)
+
+```
+
+
+```{r}
+anova(m1, m2, m3, m4)
+```
+Variabel wt berpengaruh signifikan terhadap mpg (p < 0.001).
+Setelah memasukkan wt, variabel hp masih memberikan tambahan pengaruh yang signifikan (p ≈ 0.0018).
+Namun, setelah wt dan hp ada dalam model, variabel disp tidak memberikan pengaruh tambahan yang signifikan (p ≈ 0.93).
+
+Kesimpulan: Model yang cukup baik adalah mpg∼wt+hp, karena penambahan disp tidak meningkatkan kemampuan model secara signifikan.
+
+## F Parsial
+
+Akan diuji apakah hp signifikan setelah semua variabel lain dikontrol
+```{r}
+# full model
+full <- lm(mpg ~ wt + hp + disp, data = mtcars)
+
+# reduced (tanpa hp)
+red <- lm(mpg ~ wt + disp, data = mtcars)
+
+anova(red, full)
+```
+Variabel hp berpengaruh signifikan terhadap mpg setelah mengontrol wt dan disp (p < 0.05).
+
+
+# Data
+
+Data yang digunakan terdiri atas 34 amatan yang merepresentasikan 34 provinsi di Indonesia. Peubah respon yang digunakan adalah Y, sedangkan peubah penjelas yang digunakan adalah X1, X2, X3, X4, X5, dan X6. Pada bagian ini dilakukan pemodelan regresi untuk menguji pengaruh peubah-peubah penjelas terhadap peubah respon Y.
+
+Keterangan peubah yang digunakan:
+
+Y  = ASFR (Age-Specific Fertility Rate)
+
+X1 = Persentase penduduk miskin (%)
+
+X2 = Proporsi perempuan umur 20–24 tahun yang berstatus kawin atau hidup bersama sebelum umur 18 tahun (%)
+
+X3 = Angka Partisipasi Sekolah umur 16–18 tahun (%)
+
+X4 = Tingkat Pengangguran Terbuka (TPT) (%)
+
+X5 = Persentase penduduk yang mempunyai keluhan kesehatan (%)
+
+X6 = Cakupan peserta KB aktif (%)
+
+```{r}
+data <- read_excel("C:\\Users\\Tita\\OneDrive\\Documents\\Semester 4\\Anreg\\Data Analisis Regresi.xlsx")
+
+df_anreg <- data[, c("Y", "X1", "X2", "X3", "X4", "X5", "X6")]
+
+df_anreg$Y  <- as.numeric(df_anreg$Y)
+df_anreg$X1 <- as.numeric(df_anreg$X1)
+df_anreg$X2 <- as.numeric(df_anreg$X2)
+df_anreg$X3 <- as.numeric(df_anreg$X3)
+df_anreg$X4 <- as.numeric(df_anreg$X4)
+df_anreg$X5 <- as.numeric(df_anreg$X5)
+df_anreg$X6 <- as.numeric(df_anreg$X6)
+```
+
+# Pemodelan Awal
+```{r}
+class(dt)
+names(dt)
+str(dt)
+
+
+model1 <- lm(Y ~ ., data = df_anreg)
+summary(model1)
+```
+
+
+```{r}
+model1 <- lm(Y ~ ., data = df_anreg)
+summary(model1)
+```
+
+Persamaan regresi yang terbentuk dari seluruh peubah penjelas menghasilkan nilai koefisien determinasi (R²) sebesar 85,72% dan Adjusted R² sebesar 82,54%. Hal ini menunjukkan bahwa sebesar 85,72% keragaman peubah respon Y dapat dijelaskan oleh peubah-peubah penjelas dalam model, sedangkan sisanya dijelaskan oleh faktor lain di luar model. Hasil pengujian parsial menunjukkan bahwa peubah X2, X3, X4, dan X5 berpengaruh signifikan terhadap Y pada taraf nyata 5%, sedangkan peubah X1 dan X6 tidak berpengaruh signifikan.
+
+$$
+\hat{Y}
+=
+64.4679
++0.4591X_1
++1.7006X_2
+-0.5104X_3
+-2.1379X_4
+-0.4660X_5
++0.1490X_6
+$$
+
+# Pemeriksaan Multikolinieritas
+
+```{r}
+vif(model1)
+```
+
+Hasil pemeriksaan nilai VIF menunjukkan semua peubah penjelas memiliki VIF<10 sehingga tidak ada multikolinearitas
+
+# Penyeleksian Peubah
+
+## Best Subset
+
+```{r}
+bs <- ols_step_best_subset(model1)
+bs
+```
+
+## Backward, Forward, dan Stepwise
+
+```{r}
+null <- lm(Y ~ 1, data = df_anreg)      # model tanpa peubah penjelas
+full <- lm(Y ~ ., data = df_anreg)      # model dengan seluruh peubah
+
+step(full,
+     scope = list(lower = null, upper = full),
+     data = df_anreg,
+     direction = "backward",
+     trace = 0)
+```
+
+```{r}
+step(null, scope=list(lower=null, upper=full),data=data, direction='forward', trace=0)
+```
+
+```{r}
+step(null, scope=list(lower=null, upper=full),data=data, direction='both', trace=0)
+```
+
+Hasil penyeleksian melalui best subset, backward, forward, dan stepwise menghasilkan model yang sama, yaitu dengan 4 peubah penjelas (PDRB, LD, LPD, dan AHH)
+
+```{r}
+model2 <- lm(Y ~ X2 + X3 + X4 + X5, data = df_anreg)
+summary(model2)
+```
+
+```{r}
+AIC(model2); BIC(model2)
+```
+
+Model yang dihasilkan memiliki empat peubah penjelas, yaitu X2, X3, X4, dan X5. Seluruh peubah tersebut signifikan pada taraf nyata 5%. Nilai Adjusted R² sebesar 0,8206 menunjukkan bahwa model mampu menjelaskan sekitar 82,06% keragaman peubah respon Y. Nilai AIC model adalah 221,5412 dan nilai BIC sebesar 230,6993.
+
+$$
+\hat{Y}
+=
+89.8628
++1.5392X_2
+-0.6104X_3
+-2.7443X_4
+-0.4276X_5
+$$
+
+Jika pada metode seleksi peubah yang digunakan menghasilkan model yang berbeda, maka bisa dibandingkan nilai MSE, adjusted R-square, AIC, BIC, dan kriteria lainnya.
+
+# Shrinkage Methods
+
+## Ridge
+
+```{r}
+x <- as.matrix(data[, c("X1","X2","X3","X4","X5","X6")])
+y <- data$Y
+
+rid <- cv.glmnet(x, y, alpha = 0, nfolds = 5)  # Ridge regression
+# secara default, nfolds = 10 sehingga akan buruk ketika n<30
+rid
+coef(rid, s = "lambda.min")
+```
+Hasil pemodelan Ridge Regression menghasilkan nilai lambda optimum sebesar 1,225 yang diperoleh melalui validasi silang (cross validation). Seluruh peubah penjelas tetap masuk ke dalam model dengan koefisien yang mengalami penyusutan (shrinkage) dibandingkan regresi linear biasa. Koefisien terbesar secara positif terdapat pada peubah X2, sedangkan koefisien negatif terbesar terdapat pada peubah X4. Karena pada data ini tidak ditemukan masalah multikolinearitas yang serius, hasil Ridge Regression tidak berbeda jauh dengan model regresi linear yang telah diperoleh sebelumnya.
+
+$$
+\hat{Y}
+=
+70.3140
++0.3705X_1
++1.5378X_2
+-0.5436X_3
+-2.1270X_4
+-0.3823X_5
++0.0955X_6
+$$
+
+## Lasso
+
+```{r}
+lass <- cv.glmnet(x, y, alpha=1, nfolds = 5)
+lass
+coef(lass,s="lambda.min")
+```
+
+Hasil pemodelan Lasso menghasilkan nilai lambda optimum sebesar 0,0806 yang diperoleh melalui validasi silang (cross validation). Berbeda dengan Ridge Regression, Lasso dapat melakukan penyusutan sekaligus seleksi peubah. Pada model yang diperoleh, seluruh peubah X1, X2, X3, X4, X5, dan X6 masih memiliki koefisien yang tidak sama dengan nol sehingga tidak ada peubah yang dieliminasi dari model. Koefisien terbesar secara positif terdapat pada peubah X2, sedangkan koefisien negatif terbesar terdapat pada peubah X4.
+
+$$
+\hat{Y}
+=
+66.0378
++0.4103X_1
++1.6878X_2
+-0.5121X_3
+-2.1293X_4
+-0.4348X_5
++0.1188X_6
+$$
