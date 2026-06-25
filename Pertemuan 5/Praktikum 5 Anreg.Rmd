@@ -1,0 +1,164 @@
+---
+title: "Praktikum 5 Anreg"
+author: "Tita Ayu Parmesti"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    css: "style.css"
+---
+
+# Library
+
+```{r}
+library(readxl) # untuk membaca data
+library(GGally) # untuk menghasilkan matriks hubungan antarpeubah
+library(corrplot) # untuk menghasilkan matriks korelasi
+library(dplyr) # untuk manipulasi data
+library(car) # untuk memeriksa multikolinearitas
+```
+
+# Data
+
+```{r}
+data <- read_excel("C:\\Users\\Tita\\OneDrive\\Documents\\Semester 4\\Anreg\\Data Analisis Regresi.xlsx")
+head(data) # menampilkan sekian data awal
+str(data) # menampilkan tipe data setiap peubah
+summary(data) # menampilkan ringkasan data
+```
+Data yang digunakan adalah data dari 34 provinsi di Indonesia tahun 2024. Peubah respon yang digunakan adalah ASFR, sedangkan peubah penjelas terdiri dari enam peubah kuantitatif, yaitu persentase penduduk miskin, proporsi perempuan umur 20-24 tahun yang berstatus kawin atau hidup bersama sebelum umur 18 tahun, angka partisipasi sekolah umur 16-18 tahun, tingkat pengangguran terbuka, persentase penduduk yang mempunyai keluhan kesehatan, dan cakupan peserta KB aktif.
+
+Untuk mempermudah proses komputasi, peubah No dan Provinsi tidak digunakan karena hanya berfungsi sebagai identitas wilayah. Oleh karena itu, analisis hanya dilakukan menggunakan ASFR sebagai peubah respon dan enam peubah penjelas kuantitatif. Pada praktikum ini tidak dilakukan pemisahan data berdasarkan peubah kualitatif karena seluruh peubah penjelas yang digunakan bersifat kuantitatif.
+
+```{r}
+data <- data %>%
+  select(-No, -Provinsi) %>%
+  mutate(across(everything(), as.numeric))
+
+dt <- data
+```
+
+# Eksplorasi data
+
+```{r}
+hist(data$Y, main = "Sebaran Y")
+```
+
+```{r}
+boxplot(data$Y, main = "Sebaran Y")
+```
+
+```{r}
+ggpairs(dt,
+        upper = list(continuous = wrap("cor", size = 3)),
+        title = "Matriks Scatterplot Data")
+```
+
+```{r}
+cor_matrix <- cor(dt, use = "complete.obs")
+
+corrplot(cor_matrix, method = "color", type = "lower",
+         col = colorRampPalette(c("red", "white", "blue"))(200),
+         addCoef.col = "black", tl.col = "black", tl.srt = 35)
+```
+
+Hasil matriks scatterplot dan korelasi menunjukkan bahwa peubah respon Y memiliki hubungan positif dengan X1, X2, dan X6, serta hubungan negatif dengan X3, X4, dan X5. Hubungan terkuat dengan peubah respon ditunjukkan oleh X2 dengan koefisien korelasi sebesar 0,84, sedangkan hubungan negatif terkuat ditunjukkan oleh X4 dengan koefisien korelasi sebesar -0,62.
+
+Selain itu, terdapat beberapa korelasi yang cukup tinggi antar peubah penjelas. Beberapa di antaranya adalah korelasi antara X1 dan X6 sebesar -0,60, X2 dan X3 sebesar -0,55, serta X2 dan X4 sebesar -0,54. Namun, seluruh nilai korelasi antar peubah penjelas masih berada di bawah 0,8 sehingga indikasi multikolinearitas yang kuat belum terlihat berdasarkan matriks korelasi.
+
+# Pemodelan
+
+## Tanpa Fungsi
+
+Perhitungan nilai $\hat{\beta}$ secara matriks dapat dilakukan dengan rumus berikut.
+
+$$\hat{\beta} = (X'X)^{-1} X'y$$
+
+```{r}
+n <- nrow(dt)
+
+x0 <- rep(1, n)
+
+x <- data.frame(x0,
+                dt$X1, dt$X2, dt$X3,
+                dt$X4, dt$X5, dt$X6)
+
+x <- as.matrix(x)
+
+y <- dt$Y
+```
+
+```{r}
+beta_duga <- solve(t(x)%*%x)%*%t(x)%*%y
+beta_duga
+```
+
+Hasil tersebut menjelaskan bahwa persamaan yang terbentuk adalah
+$$
+\hat{Y}=64.4679+0.4591X_1+1.7006X_2-0.5104X_3-2.1379X_4-0.4660X_5+0.1490X_6
+$$
+Selang kepercayaan dan pengujian signifikansi setiap parameter dapat dilakukan dengan menghitung keragaman tiap dugaan parameter. Secara umum, nilai ragam dugaan parameter $\hat{\beta}_j$ dapat dihitung melalui rumus berikut.
+
+$$Var(\hat{\beta}_j) = \hat{\sigma}^2 C_{jj}$$
+Dengan matriks $C$ adalah matriks $(X'X)^{-1}$ 
+
+```{r}
+c <- data.frame(solve(t(x)%*%x))
+```
+
+Unsur diagonal dari matriks $C$ dapat digunakan untuk menghitung nilai galat baku dari setiap dugaan parameter. Galat baku ini dapat digunakan untuk menghitung selang kepercayaan dari dugaan yang dihasilkan.
+
+$$SE(\hat{\beta}_j) = \sqrt{Var(\hat{\beta}_j)} = \sqrt{\sigma^2 C_{jj}} = \hat{\sigma}\sqrt{c_{ii}}$$
+
+Misal ingin dihitung selang kepercayaan dari dugaan parameter $\beta_2$, maka
+
+```{r}
+y_hat <- x %*% beta_duga
+residuals <- y - y_hat
+n <- nrow(x)
+p <- ncol(x)
+KTG <- sum(residuals^2) / (n - p) 
+
+c22 <- c[2,2]
+
+(se.b2 <- sqrt(KTG*c22))
+```
+
+```{r}
+alfa <- 0.05
+
+#Batas Bawah beta2
+(bb.b2 <- beta_duga[3,1] - abs(qt(alfa/2, df=n-p))*se.b2)
+```
+
+```{r}
+#Batas Atas beta2
+(ba.b2 <- beta_duga[3,1] + abs(qt(alfa/2, df=n-p))*se.b2)
+```
+
+Dengan demikian, kita dapat mengetahui selang kepercayaan untuk $\hat{\beta}_2$ sebagai berikut.
+
+$$
+1.1372 < \hat{\beta}_2 < 2.2640
+$$
+
+Pada kasus selang kepercayaan $\hat{\beta}_2$ di atas, didapati bahwa dugaan parameter berada dalam rentang yang mengandung nilai 0. Dengan demikian, dapat dimaknai bahwa diduga nilai parameter $\hat{\beta}_2$ bernilai 0 atau tidak signifikan dalam taraf nyata 5%.
+
+
+## Dengan Fungsi
+
+```{r}
+model1 <- lm(formula = Y ~ ., data = dt)
+summary(model1)
+```
+
+Dugaan parameter model secara matriks dan fungsi menghasilkan nilai yang sama, sehingga perhitungan matriks telah sesuai dengan hasil yang diperoleh menggunakan fungsi lm(). Berdasarkan hasil pengujian parsial, diperoleh bahwa peubah X2, X3, X4, dan X5 berpengaruh signifikan terhadap peubah respon Y pada taraf signifikansi 5%, sedangkan peubah X1 dan X6 tidak berpengaruh signifikan. Secara simultan, model regresi yang terbentuk signifikan karena nilai p-value uji F sebesar 3.291 × 10⁻¹⁰ lebih kecil dari 0,05. Selain itu, nilai Adjusted R-squared sebesar 0,8254 menunjukkan bahwa sekitar 82,54% keragaman peubah respon Y dapat dijelaskan oleh peubah-peubah penjelas dalam model, sedangkan sisanya dijelaskan oleh faktor lain di luar model.
+
+# Pemeriksaan Multikoliniearitas
+
+```{r}
+vif(model1)
+```
+
+Hasil uji VIF menunjukkan bahwa seluruh peubah penjelas memiliki nilai VIF di bawah 5. Nilai VIF tertinggi terdapat pada X6 sebesar 2.5169, sedangkan nilai VIF peubah lainnya juga masih berada pada batas aman. Dengan demikian, model tidak mengalami masalah multikolinearitas yang serius, sehingga tidak perlu dilakukan penghapusan peubah.
